@@ -9,8 +9,17 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.particle.SingleQuadParticle;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.Level;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
 import java.net.URI;
@@ -21,10 +30,145 @@ import java.util.Map;
 
 public class POTHUSHNOCLIENTClient implements ClientModInitializer {
 
+    private static final Identifier FP5_SPRITE =
+            Identifier.fromNamespaceAndPath("pothushnoclient", "fp5");
+    private static final Identifier PARTICLE_ATLAS =
+            Identifier.fromNamespaceAndPath("minecraft", "particles");
+
     public static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath("pothushnoclient", "main"));
 
     public static KeyMapping openGuiKey;
+
+    /**
+     * A short, client-side finishing sequence.  The actual hit is sent through the
+     * normal game interaction manager, so server-side combat rules are still used.
+     */
+    public static class FinishingModule extends Module {
+        private static final int FLIGHT_TICKS = 18;
+        private LivingEntity pendingTarget;
+        private int flightTicks;
+
+        public FinishingModule() {
+            super("Finishing", Category.COMBAT);
+        }
+
+        public void tick(Minecraft client) {
+            if (!isEnabled() || client.player == null || client.level == null || client.gameMode == null) {
+                cancel();
+                return;
+            }
+
+            if (pendingTarget != null) {
+                if (!pendingTarget.isAlive() || pendingTarget.level() != client.level) {
+                    cancel();
+                    return;
+                }
+                if (--flightTicks <= 0) finish(client);
+                return;
+            }
+
+            LivingEntity target = findTarget(client);
+            if (target != null && target.getHealth() < 1.0F) {
+                pendingTarget = target;
+                flightTicks = FLIGHT_TICKS;
+                Vec3 launchPosition = client.player.getEyePosition()
+                        .add(client.player.getLookAngle().scale(0.8D));
+                client.particleEngine.add(new Fp5Particle(client.level, launchPosition, target));
+                client.level.playLocalSound(target.getX(), target.getY(), target.getZ(),
+                        SoundEvents.FIREWORK_ROCKET_LAUNCH, target.getSoundSource(), 0.8F, 1.15F, false);
+            }
+        }
+
+        private LivingEntity findTarget(Minecraft client) {
+            if (client.crosshairPickEntity instanceof LivingEntity target
+                    && target != client.player
+                    && target.isAlive()
+                    && client.player.distanceToSqr(target) <= 36.0D) {
+                return target;
+            }
+            return null;
+        }
+
+        private void finish(Minecraft client) {
+            LivingEntity target = pendingTarget;
+            cancel();
+            if (target == null || !target.isAlive()) return;
+
+            Level level = client.level;
+            level.addParticle(ParticleTypes.EXPLOSION_EMITTER,
+                    target.getX(), target.getY() + target.getBbHeight() * 0.5D, target.getZ(),
+                    0.0D, 0.0D, 0.0D);
+            level.playLocalSound(target.getX(), target.getY(), target.getZ(),
+                    SoundEvents.GENERIC_EXPLODE.value(), target.getSoundSource(), 1.0F, 1.0F, false);
+            client.gameMode.attack(client.player, target);
+            client.player.swing(InteractionHand.MAIN_HAND);
+        }
+
+        private void cancel() {
+            pendingTarget = null;
+            flightTicks = 0;
+        }
+
+        public boolean isFlying() {
+            return pendingTarget != null;
+        }
+
+        public float flightProgress() {
+            return 1.0F - (float) flightTicks / FLIGHT_TICKS;
+        }
+
+        @Override
+        protected void onDisable() {
+            cancel();
+            super.onDisable();
+        }
+    }
+
+    /** A camera-facing world-space image, similar to a nextbot sprite. */
+    private static class Fp5Particle extends SingleQuadParticle {
+        private final LivingEntity target;
+        private final Vec3 start;
+
+        Fp5Particle(ClientLevel level, Vec3 start, LivingEntity target) {
+            super(level, start.x, start.y, start.z, sprite());
+            this.start = start;
+            this.target = target;
+            this.lifetime = FinishingModule.FLIGHT_TICKS;
+            this.quadSize = 1.8F;
+            this.hasPhysics = false;
+        }
+
+        private static TextureAtlasSprite sprite() {
+            return Minecraft.getInstance().getAtlasManager()
+                    .getAtlasOrThrow(PARTICLE_ATLAS).getSprite(FP5_SPRITE);
+        }
+
+        @Override
+        public void tick() {
+            this.xo = this.x;
+            this.yo = this.y;
+            this.zo = this.z;
+            if (++this.age >= this.lifetime || !target.isAlive()) {
+                this.remove();
+                return;
+            }
+            Vec3 destination = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
+            double progress = (double) this.age / this.lifetime;
+            this.setPos(
+                    start.x + (destination.x - start.x) * progress,
+                    start.y + (destination.y - start.y) * progress,
+                    start.z + (destination.z - start.z) * progress
+            );
+        }
+
+        @Override
+        protected Layer getLayer() {
+            return Layer.bySprite(this.sprite);
+        }
+    }
+
+    private static FinishingModule finishingModule;
 
     @Override
     public void onInitializeClient() {
@@ -39,6 +183,7 @@ public class POTHUSHNOCLIENTClient implements ClientModInitializer {
                 if (ClickGuiScreen.isOpen()) client.setScreenAndShow(null);
                 else                         client.setScreenAndShow(new ClickGuiScreen());
             }
+            if (finishingModule != null) finishingModule.tick(client);
         });
     }
 
@@ -208,6 +353,9 @@ public class POTHUSHNOCLIENTClient implements ClientModInitializer {
         MODULES.get(Module.Category.COMBAT).add(
                 new Module("AutoClicker", Module.Category.COMBAT)
                         .addOption(new Option("CPS", 8.0f, 1.0f, 20.0f)));
+
+        finishingModule = new FinishingModule();
+        MODULES.get(Module.Category.COMBAT).add(finishingModule);
 
         MODULES.get(Module.Category.COMBAT).add(
                 new Module("Reach", Module.Category.COMBAT)

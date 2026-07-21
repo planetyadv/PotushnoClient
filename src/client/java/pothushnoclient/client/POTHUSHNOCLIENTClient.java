@@ -72,8 +72,7 @@ public class POTHUSHNOCLIENTClient implements ClientModInitializer {
             if (target != null && target.getHealth() < 1.0F) {
                 pendingTarget = target;
                 flightTicks = FLIGHT_TICKS;
-                Vec3 launchPosition = client.player.getEyePosition()
-                        .add(client.player.getLookAngle().scale(0.8D));
+                Vec3 launchPosition = target.position().add(5.0D, 30.0D, -3.0D);
                 client.particleEngine.add(new Fp5Particle(client.level, launchPosition, target));
                 client.level.playLocalSound(target.getX(), target.getY(), target.getZ(),
                         SoundEvents.FIREWORK_ROCKET_LAUNCH, target.getSoundSource(), 0.8F, 1.15F, false);
@@ -345,50 +344,8 @@ public class POTHUSHNOCLIENTClient implements ClientModInitializer {
     static {
         for (Module.Category c : Module.Category.values()) MODULES.put(c, new ArrayList<>());
 
-        MODULES.get(Module.Category.COMBAT).add(
-                new Module("Killaura", Module.Category.COMBAT)
-                        .addOption(new Option("Range",  3.0f, 2.0f, 6.0f))
-                        .addOption(new Option("APS",   10.0f, 1.0f, 20.0f)));
-
-        MODULES.get(Module.Category.COMBAT).add(
-                new Module("AutoClicker", Module.Category.COMBAT)
-                        .addOption(new Option("CPS", 8.0f, 1.0f, 20.0f)));
-
         finishingModule = new FinishingModule();
         MODULES.get(Module.Category.COMBAT).add(finishingModule);
-
-        MODULES.get(Module.Category.COMBAT).add(
-                new Module("Reach", Module.Category.COMBAT)
-                        .addOption(new Option("Range", 3.5f, 3.0f, 6.0f)));
-
-        MODULES.get(Module.Category.MOVEMENT).add(
-                new Module("Speed", Module.Category.MOVEMENT)
-                        .addOption(new Option("Multiplier", 1.5f, 1.0f, 5.0f)));
-
-        MODULES.get(Module.Category.MOVEMENT).add(
-                new Module("Flight", Module.Category.MOVEMENT)
-                        .addOption(new Option("Speed", 1.0f, 0.1f, 3.0f)));
-
-        MODULES.get(Module.Category.MOVEMENT).add(
-                new Module("NoFall", Module.Category.MOVEMENT));   // без опций
-
-        MODULES.get(Module.Category.RENDER).add(
-                new Module("ESP", Module.Category.RENDER)
-                        .addOption(new Option("Distance", 50.0f, 10.0f, 100.0f)));
-
-        MODULES.get(Module.Category.RENDER).add(
-            new FullbrightModule("Fullbright", Module.Category.RENDER)
-                .addOption(new Option("Gamma", 10.0f, 1.0f, 20.0f))
-);
-
-        MODULES.get(Module.Category.RENDER).add(
-                new Module("Tracers", Module.Category.RENDER));    // без опций
-
-        MODULES.get(Module.Category.MISC).add(
-                new Module("AutoText",      Module.Category.MISC));
-        MODULES.get(Module.Category.MISC).add(
-                new Module("Notifications", Module.Category.MISC)
-                        .addOption(new Option("Duration", 3.0f, 1.0f, 10.0f)));
     }
 
     // ══════════════════════════════════════════════════════════════
